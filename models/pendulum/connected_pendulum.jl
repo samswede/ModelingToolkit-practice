@@ -13,10 +13,6 @@ plotly()
         b=0.0
     end
     @variables begin
-        #x(t)
-        #y(t)
-        #v_x(t)
-        #v_y(t)
         T_x(t)
         T_y(t)
     end
@@ -24,21 +20,15 @@ plotly()
         port = PendulumPort()
     end
     @equations begin
-        # Position of the immovable pin
-        #x ~ a
-        #y ~ b
 
-        #D(x) ~ v_x
-        #D(y) ~ v_y
-
-        #v_x ~ 0
         #v_y ~ 0
+        #v_x ~ 0
 
         # Connector
         port.T_x ~ -T_x # The force is opposite to the tension in the pendulum
         port.T_y ~ -T_y # The force is opposite to the tension in the pendulum
-        port.x ~ 0
-        port.y ~ 0
+        port.v_xa ~ 0
+        port.v_ya ~ 0
         
     end
 end
@@ -46,8 +36,8 @@ end
 
 @connector PendulumPort begin
     # Across variables
-    x(t) 
-    y(t) 
+    v_xa(t) 
+    v_ya(t) 
 
     # Through variables (flow variables)
     T_x(t), [connect = Flow] # Tension in the pendulum
@@ -55,6 +45,16 @@ end
 
 end
 
+@connector MechanicalPort begin
+    # Across variables
+    v_x(t) # Velocity in the x direction
+    v_y(t) # Velocity in the y direction
+
+    # Through variables (flow variables)
+    Fx(t), [connect = Flow] # Force in the x direction
+    Fy(t), [connect = Flow] # Force in the y direction
+
+end
 
 
 @mtkmodel Pendulum begin
@@ -70,10 +70,11 @@ end
     @variables begin
         xa(t)
         ya(t)
+        v_xa(t)
+        v_ya(t)
 
         x(t)
         y(t)
-
         v_x(t)
         v_y(t)
 
@@ -88,19 +89,19 @@ end
         #port_b = MechanicalPort()
     end
     @equations begin
-        # connectors
-        port_a.x ~ xa
-        port_a.y ~ ya
-        port_a.T_x ~ T_x # Don't know if this should be negative
-        port_a.T_y ~ T_y 
+
+        D(x) ~ v_x
+        D(y) ~ v_y
+
+        D(xa) ~ v_xa
+        D(ya) ~ v_ya
 
         # Component Forces
         T_x ~ T*((x - xa)/L)
         T_y ~ T*((y - ya)/L)
         #F_g ~ m*g
 
-        D(x) ~ v_x
-        D(y) ~ v_y
+
         # physics
         m*D(v_x)~ -(T_x)
         m*D(v_y) ~ -T_y - F_g
@@ -108,6 +109,13 @@ end
         (x-xa)^2 + (y-ya)^2 ~ L^2 # Constraint equation
 
         T ~ k*(L - L0) # Spring force (compliance method)
+
+
+        # connectors
+        port_a.v_xa ~ v_xa
+        port_a.v_ya ~ v_ya
+        port_a.T_x ~ -T_x # The force is opposite to the tension in the pendulum
+        port_a.T_y ~ -T_y # The force is opposite to the tension in the pendulum
 
     end
 end
@@ -119,7 +127,7 @@ end
         
     end
     @components begin
-        immovable_pin = ImmovablePin(a, b)
+        immovable_pin = ImmovablePin()
         pendulum = Pendulum()
     end
     @equations begin
@@ -158,19 +166,26 @@ function set_initial_conditions!(system, θ, L, xa, ya)
     initial_conditions = [
         system.pendulum.x => x_init,
         system.pendulum.y => y_init,
+        
         system.pendulum.L => L,
         system.pendulum.v_x => 0.0,
-        system.pendulum.v_y => 0.0
+        system.pendulum.v_y => 0.0,
+        system.pendulum.xa => 0
+
     ]
     
+
     # Initial guesses for the remaining variables
     initial_guesses = [
+        
         system.pendulum.T => 0, 
         system.pendulum.T_x => 0, 
         system.pendulum.T_y => 0.0,
-        system.pendulum.xa => xa,
-        system.pendulum.ya => ya
 
+        system.pendulum.ya => 0,
+        system.pendulum.v_xa => 0.0,
+        system.pendulum.v_ya => 0.0
+        
     ]
     
     return initial_conditions, initial_guesses
@@ -183,10 +198,8 @@ x0 = 100.0
 y0 = 100.0
 tspan = (0, 10)
 
-
 # Set initial conditions using the function
 initial_conditions, initial_guesses = set_initial_conditions!(system, θ, length, x0, y0)
-
 
 
 # Reconstruct the problem from the simplified symbolic representation

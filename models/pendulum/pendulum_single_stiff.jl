@@ -10,18 +10,15 @@ plotly()
 
 @mtkmodel Pendulum begin
     @parameters begin
-        x0=0
-        y0=0
+        xa=0
+        ya=0
         m=1.0
-        g=9.8
-
         L0=1.0
         k=1e6
-
+        g=9.8
         F_g = m*g
     end
     @variables begin
-
         x(t)
         y(t)
 
@@ -36,12 +33,13 @@ plotly()
     end
     @equations begin
         # connectors
-        #port.x0 ~ x0
-        #port.y0 ~ y0
+        #port.xa ~ xa
+        #port.ya ~ ya
+
 
         # Component Forces
-        T_x ~ T*((x - x0)/L)
-        T_y ~ T*((y - y0)/L)
+        T_x ~ T*((x - xa)/L)
+        T_y ~ T*((y - ya)/L)
         #F_g ~ m*g
 
         D(x) ~ v_x
@@ -50,7 +48,7 @@ plotly()
         m*D(v_x)~ -(T_x)
         m*D(v_y) ~ -T_y - F_g
 
-        x^2 + y^2 ~ L^2 # Constraint equation
+        (x-xa)^2 + (y-ya)^2 ~ L^2 # Constraint equation
 
         T ~ k*(L - L0) # Spring force (compliance method)
 
@@ -59,10 +57,7 @@ end
 
 #when using @mtkbuild then structural_simplify is automatically called and we therefore cannot see the unsimplify system. Replace @mtkbuild with @named to generate an ODESystem without applying structural_simplify.
 @mtkbuild pendulum = Pendulum() # automatically applies structural_simplify
-
-#@named pendulum = ODESystem(Pendulum()) # does not apply structural_simplify
-# perform index reduction and simplify the system
-#pendulum = structural_simplify(dae_index_lowering(pendulum))
+     # automatically applies structural_simplify
 
 # Extract the equations and unknowns
 println("Equations")
@@ -81,23 +76,45 @@ println()
 println(observed(pendulum))
 
 
+function set_initial_conditions!(pendulum, θ, L, xa, ya)
+    # Calculate initial positions based on the angle θ and length L
+    x_init = xa + L * sin(θ)
+    y_init = ya - L * cos(θ)
+    
+    # Initial conditions
+    initial_conditions = [
+        pendulum.x => x_init,
+        pendulum.y => y_init,
+        pendulum.L => L,
+        pendulum.v_x => 0.0,
+        pendulum.v_y => 0.0
+    ]
+    
+    # Initial guesses for the remaining variables
+    initial_guesses = [
+        pendulum.T => 0, 
+        pendulum.T_x => 0, 
+        pendulum.T_y => 0.0
+    ]
+    
+    return initial_conditions, initial_guesses
+end
+
+# Example parameters
+θ = pi/4  # 45 degrees
+length = 10.0
+location_x = 100.0
+location_y = 100.0
+
+# Set initial conditions using the function
+initial_conditions, initial_guesses = set_initial_conditions!(pendulum, θ, length, location_x, location_y)
+
+
 tspan = (0, 10)
 
-# The following ICs must be satisfied exactly
-initial_conditions = [
-    pendulum.x => 1.0, 
-    pendulum.y => 0.0, 
-    pendulum.L => 1.0, 
-    pendulum.v_x => 0.0, 
-    pendulum.v_y => 0.0
-    ]
-
-# The remaining variables must be given initial guesses
-initial_guesses = [
-    pendulum.T => 0, 
-    pendulum.T_x => 0, 
-    pendulum.T_y => 0.0
-    ]
+pendulum.xa = location_x
+pendulum.ya = location_y
+pendulum.L0 = length
 
 # Reconstruct the problem from the simplified symbolic representation
 prob = ODEProblem(pendulum, initial_conditions, tspan, guesses = initial_guesses)
@@ -116,6 +133,6 @@ y = sol[pendulum.y, :]
 
 
 # Generate the 3D plot
-plot(sol.t, x, y, xlabel="x", ylabel="y", zlabel="Time", title="3D Pendulum Motion", lw=2)
+plot(sol.t, x, y, xlabel="Time", ylabel="y", zlabel="x", title="3D Pendulum Motion", lw=2)
 
 
